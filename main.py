@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
-import sys
+import sys, os
 from tool import Tool
 
 USAGE = '''
@@ -17,6 +17,7 @@ def process(source):
         tool = Tool(source)
         for each in tool.files:
             print(each.save())
+        os.unlink(source)
     except Exception as e:
         print(e)
         return 2
