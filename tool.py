@@ -1,13 +1,12 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
-import io, os, uuid
+import io, os, time
 from tempfile import NamedTemporaryFile
-
 import zbar
 import zbar.misc
 from skimage.io import imread as read_image
-
+from PIL import Image
 from wand.image import Image as WAND_Image
 
 from PyPDF2 import PdfFileReader, PdfFileWriter
@@ -16,30 +15,40 @@ from PyPDF2.utils import PdfReadError
 
 class File(object):
 
-    def __init__(self, source, num, folder):
+    def __init__(self, source, pages, qrcode):
         
-        self.num = num
-        self.folder = folder
-        self.uuid = str(uuid.uuid4())
-        
+        self.pages = pages
+        self.qrcode = qrcode
+        self.folder = "/mnt/"+self.qrcode.split("#")[1].replace('\\', '/').replace('[YYYY]', time.strftime("%Y")).replace('[MM]', time.strftime("%m")).replace('[DD]', time.strftime("%d")).replace('[hh]', time.strftime("%H")).replace('[mm]', time.strftime("%M")).replace('[ss]', time.strftime("%S"))
+        if self.folder[-1] != "/":
+            self.folder = self.folder + "/"
+        self.file_name = self.qrcode.split("#")[2].replace('[YYYY]', time.strftime("%Y")).replace('[MM]', time.strftime("%m")).replace('[DD]', time.strftime("%d")).replace('[hh]', time.strftime("%H")).replace('[mm]', time.strftime("%M")).replace('[ss]', time.strftime("%S"))
         self.source = source
-        self.file_name = "{}_{}.pdf" .format(self.source.filename, self.uuid)
 
     def save(self, folder=None):
         
         tmpl = "[%s] from file '%s' copy page (%s) to %s"
 
-        page = self.source.reader.getPage(self.num)
         path = os.path.join(folder or self.folder, self.file_name)
+        if path[-4:] == ".pdf":
+            path = path[0:-4]
         
         try:
+            if os.path.isfile(path+".pdf"):
+                path = path + "_"
+                for i in range(1,500):
+                    if not os.path.isfile(path+str(i)+".pdf"):
+                        path = path + str(i)
+                        break
+            path = path + ".pdf"
             with open(path, 'wb') as output: 
                 wrt = PdfFileWriter()
-                wrt.addPage(page)
+                for num_page in self.pages:
+                    wrt.addPage(self.source.reader.getPage(num_page))
                 wrt.write(output)
-                return tmpl % ('ok', self.source.source, self.num, path)
+                return tmpl % ('ok', self.source.source, self.pages, path)
         except Exception as ex:
-            return tmpl % (ex, self.source.source, self.num, path)
+            return tmpl % (ex, self.source.source, self.pages, path)
 
 
 class Tool(object):
@@ -47,6 +56,7 @@ class Tool(object):
         self.source = source
         self.__pages = {}
         self.__qrcodes = {}
+        self.dpi = 150
 
         if not self.source:
             raise ValueError('Source is not set')
@@ -61,7 +71,6 @@ class Tool(object):
             self.__split_pages()
             
         return super(Tool, self).__init__()
-
     @property
     def pages_count(self):
         return self.reader.getNumPages()
@@ -77,29 +86,35 @@ class Tool(object):
     @property
     def files(self):
         __files = []
-
-        folder = None
-
+        pages = []
+        qrcode = None
         for num in self.__pages.keys():
+            if self.__pages[num]:
+                continue
             barcodes = self.__qrcodes.get(num)
-            if barcodes:
-                folder = barcodes[0]
+            if barcodes and barcodes[0][0] == "#":
+                if num != 0:
+                    __files.append(File(
+                        self,
+                        pages, 
+                        qrcode
+                    ))
+                    pages = []
+                qrcode = barcodes[0]
             else:
-                if not folder:
+                if not qrcode:
                     raise ValueError('First page is not QRcode')
-
-                __files.append(File(
-                    self,
-                    num, 
-                    folder
-                ))
+                pages.append(num)
+                if num == max(list(self.__pages)):
+                    __files.append(File(
+                        self,
+                        pages, 
+                        qrcode
+                    ))        
         return __files
 
     @staticmethod
     def code(file_path=None, barcode_type='QRCODE'):
-   
-        
-        
         image = read_image(file_path)
         
         if len(image.shape) == 3:
@@ -114,27 +129,27 @@ class Tool(object):
         
             
         return barcodes
-
+            
     def __split_pages(self):
         for count_index, num in enumerate(range(self.pages_count), 1):
-            self.__pages[num] = True
+            self.__pages[num] = False
             page = self.reader.getPage(num)
-
             with NamedTemporaryFile(delete=False) as tmp:
                 
                 wrt = PdfFileWriter()
                 wrt.addPage(page)
                 wrt.write(tmp)
                 tmp.close()
-
                 with NamedTemporaryFile(delete=False) as out:
-                    
                     with WAND_Image(filename=tmp.name, resolution=150) as img:
                         img.format = 'jpg'
                         img.save(file=out)
                     
                     out.close()
-
+                    with Image.open(out.name) as img:
+                        min, max = img.convert("L").getextrema()
+                        if max - min < 30:
+                            self.__pages[num] = True
                     self.__qrcodes[num] = Tool.code(out.name)
 
                     os.unlink(out.name)
