@@ -160,7 +160,7 @@ class Tool(object):
                             
                             print("Px_valides : "+str(px_valides*100000/total_px)+" / 100000")
                             print(img.convert("L").getcolors())
-                            if px_valides*100000/total_px < 5:
+                            if px_valides*100000/total_px < 100:
                                 self.__pages[num] = True
                     print(out.name)
                     self.__qrcodes[num] = Tool.code(out.name)
