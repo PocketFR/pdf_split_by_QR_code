@@ -148,10 +148,25 @@ class Tool(object):
                     out.close()
                     with Image.open(out.name) as img:
                         min, max = img.convert("L").getextrema()
-                        if max - min < 30:
+                        print("valeurs min: "+str(min)+" max: "+str(max))
+                        if max - min < 15:
                             self.__pages[num] = True
+                        else:
+                            total_px = 0
+                            px_valides = 0
+                            for nb_px, rgb_val in img.convert("L").getcolors():
+                                total_px = total_px + nb_px
+                                if rgb_val < max - 15:
+                                    px_valides = px_valides + nb_px
+                            
+                            print("Px_valides : "+str(px_valides*100000/total_px)+" / 100000")
+                            print(img.convert("L").getcolors())
+                            if px_valides*100000/total_px < 5:
+                                self.__pages[num] = True
+                    print(out.name)
                     self.__qrcodes[num] = Tool.code(out.name)
 
                     os.unlink(out.name)
 
                 os.unlink(tmp.name)
+
