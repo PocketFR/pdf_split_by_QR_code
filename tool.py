@@ -105,12 +105,11 @@ class Tool(object):
                 if not qrcode:
                     raise ValueError('First page is not QRcode')
                 pages.append(num)
-                if num == max(list(self.__pages)):
-                    __files.append(File(
-                        self,
-                        pages, 
-                        qrcode
-                    ))        
+        __files.append(File(
+            self,
+            pages, 
+            qrcode
+        ))        
         return __files
 
     @staticmethod
